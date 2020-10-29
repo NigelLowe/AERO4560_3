@@ -28,20 +28,21 @@ cd(TopFolder);
 
 switch loadCase
     case 1
-        [ FlightData ] = LoadFlightData_aircraft4_50kts_CG1();
-        load ICs_aircraft4_50Kts_CG1.mat
-
-    case 2
-        [ FlightData ] = LoadFlightData_aircraft4_50kts_CG2();
-        load ICs_aircraft4_50Kts_CG2.mat
-
-    case 3
         [ FlightData ] = LoadFlightData_aircraft4_90kts_CG1();
         load ICs_aircraft4_90Kts_CG1.mat
 
-    case 4
+    case 2
         [ FlightData ] = LoadFlightData_aircraft4_90kts_CG2();
         load ICs_aircraft4_90Kts_CG2.mat
+        
+    case 3
+        [ FlightData ] = LoadFlightData_aircraft4_50kts_CG1();
+        load ICs_aircraft4_50Kts_CG1.mat
+
+    case 4
+        [ FlightData ] = LoadFlightData_aircraft4_50kts_CG2();
+        load ICs_aircraft4_50Kts_CG2.mat
+        
 end
 
 %cd(Current_Folder); % go back inside longitudinal folder
