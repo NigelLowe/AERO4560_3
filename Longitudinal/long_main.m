@@ -164,7 +164,7 @@ Gt = tf(num, den);
 disp('theta:');
 minreal(zpk(Gt))
 
-
-
-
+Gvs = V_trim * (Gt - Ga);
+disp('vs:');
+minreal(zpk(Gvs))
 
