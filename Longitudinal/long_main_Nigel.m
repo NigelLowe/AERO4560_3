@@ -155,9 +155,9 @@ disp('alpha:');
 minreal(zpk(Ga))
 
 [num, den] = ss2tf(A_Lon, B_Lon, C(3,:), D, B_num);
-Gp = tf(num, den);
-disp('p:');
-minreal(zpk(Gp))
+Gq = tf(num, den);
+disp('q:');
+minreal(zpk(Gq))
 
 [num, den] = ss2tf(A_Lon, B_Lon, C(4,:), D, B_num);
 Gt = tf(num, den);
@@ -167,3 +167,134 @@ minreal(zpk(Gt))
 Gvs = V_trim * (Gt - Ga);
 disp('vs:');
 minreal(zpk(Gvs))
+
+
+%sisotool(Gq);
+
+%{
+%% Q1
+Use root locus tools to investigate why the design of an autopilot based on
+using elevator to directly control vertical speed is problematic. Discuss
+the nature of the inherent problems. (500ft/min vertical speed step input.
+Rise time 3s, settling time 10s)
+500ft/min = 2.54 m/s
+
+Zeros are one large stable, one large unstable, one small stable root.
+Increasing gain to control vertical speed will push the small stable root
+into the right hand plane 
+
+
+
+Proportional controller - improve rise time
+Derivative controller - reduce overshoot
+Integral controller - reduce steady state error
+
+
+
+       rise time    overshoot    settling time    steady state error
+Kp         v            ^            ~                     v               
+Ki         v            ^            ^                     v
+Kd         ~            v            v                     -
+lead/lag   v            v                                  v
+v = decrease, ^ = increase, ~ = small change, - = no change
+
+
+C = -0.0001, pole at 30.04: Trying to cancel the unstable zero is very difficult becuase it has to be
+exactly the same value root to cancel but they are defined by a lot of
+decimal places. So the unstable zero will exist in the root locus even when
+you try cancel it. 
+
+
+Proportional C = 0.0001: stable response. Rise time = 3.62s, peak amplitude
+= -910 (58.5% overshoot) at 11.3s, settling time = 54.1s, steady state = -573 
+Decrease to C = 1e-10: tr = 3.42s, peak -853 (57.3%) at 10.9s, ts = 51.8,
+ss = -542. Proportional controller by itself is not enough to create the
+desired response.
+
+Other way of decreasing rise time by adding integrator but increases
+overshoot and settling time. 
+
+
+
+
+
+
+
+
+Q2
+*PI with integrator - within command bandwidth(integrator to get rid of differentiator in tf)
+*PI - only way to get low sse is with extremely fast response. < 1
+millisecond but cross over frequency at 1000 rad/s (has 10 times gain as PI
+with integrator)
+*PI - got cross over frequency 2-10 rad/s with -0.2875(s+0.032)/s. But sse
+is no where near desired (at 0.1 amplitude)
+*Lead/Lag - want pole to be as close to zero as possible to be like a
+second integrator for the sse response but needs be be within 100 times of zero.
+
+converts commanded vertical speed to a pitch rate
+
+%}
+
+%% Q3
+% inner loop TF
+s = tf('s');
+
+% q controller
+K1 = -2*(s+0.05) / (s * (s + 0.01) ); % lead/lag
+%K1 = -6.1541*(1+0.0064*s)*(1+0.035*s) / s; % PID
+%K1 = -1.6667*(s+0.03)/s^2; % PI with integrator
+
+% vs controller
+K2 = 0.015; % proportional - works with lead/lag
+
+G1 = Gq;
+G2 = Gvs;
+
+% inner loop sensitivity functins (de to q)
+T1 = G1 * K1;
+S1 = 1 / (1 + T1);
+C1 = T1 / (1 + T1); 
+
+Gin = K1 * S1 * G2;
+Gin = minreal(zpk(Gin));
+
+sisotool(Gin)
+
+% outer loop sensitivity functions (q to vs)
+T2 = Gin * K2; 
+S2 = 1 / (1 + T2);
+C2 = T2 / (1 + T2); 
+
+
+% time response
+dt = 0.1;
+t = 0:dt:10;
+vsc = 2.54 * ones(1,length(t)); % 500 ft/min vertical speed step input (2.54 m/s)
+vsc(1) = 0;
+
+vs = step(C2 * 2.54, t);
+qc = step(K2 * S2 * 2.54, t); 
+%q  = step(C1, t); % q to qc
+%de = step(K1 * S1, t); % de to qc
+q = step(C1 * K2 * S2 * 2.54, t); % q to vs_c
+de = step(K1 * S1 * K2 * S2 * 2.54, t); % de to vs_c
+
+
+figure(3);
+plot(t,vs, t,vsc);
+xlabel('Time (s)');
+ylabel('Vertical Speed (m/s)');
+legend('v_s', 'v_s_c');
+
+figure(4);
+plot(t,rad2deg(q), t,rad2deg(qc));
+xlabel('Time (s)');
+ylabel('q (deg/s)');
+legend('q', 'q_c');
+
+trim_de = U0(2);
+figure(5);
+plot(t,rad2deg(de+trim_de));
+xlabel('Time (s)');
+ylabel('Elevator deflection (deg)');
+
