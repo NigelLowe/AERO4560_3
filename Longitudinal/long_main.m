@@ -318,7 +318,7 @@ fprintf('Max de: %.4f, min de: %.4f deg\n\n', max(rad2deg(de+trim_de)), min(rad2
 
 
 
-%% Gust input
+% Gust input
 
 % Ref wind at 20 feet AGL
 u20 = convvel(35,'kts','m/s'); 
@@ -485,6 +485,10 @@ G_wg_de1 = 1/Gvs * 1/wg_vs;
 
 
 
+
+
+
+%% Q4
 
 
 
