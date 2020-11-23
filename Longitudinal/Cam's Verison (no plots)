@@ -1,0 +1,334 @@
+%%%%%%%%% 
+% Ass 3: Flight Mech 2 
+% Author: Cameron Webb
+% Longitudinal System
+
+
+close all
+
+plotStuff()
+
+plot_num = 2;
+
+% Get the linearised long system
+load ICs_aircraft4_90Kts_CG1
+FlightData = LoadFlightData_aircraft4_90kts_CG1;
+
+iteration_limit = 100;
+
+
+% Initialise for a non pertubed state
+% Set up a for loop to make the residual small for state u
+[Xdot0] = zeros(12,1);
+
+Xdot = Xdot0;
+
+[ForceCoeff, MomentCoeff] = aero4560_aero(X0, zeros(6,1),Xdot, U0, FlightData);
+[Xdot] = aero4560_motion(X0, ForceCoeff, MomentCoeff, FlightData);    
+
+
+% Iterate a few times (Until itneration limit)
+for p = 1:iteration_limit
+    [ForceCoeff, MomentCoeff] = aero4560_aero(X0, zeros(6,1),Xdot, U0, FlightData);
+    [Xdot] = aero4560_motion(X0, ForceCoeff, MomentCoeff, FlightData);    
+end
+
+Xdot0 = Xdot;
+
+
+% Now add a peurtubation 
+delta_x = 1e-7;
+
+% Make the A matrix 
+%%%%%%%%
+
+
+for i = 1:12
+    X = X0; % Reset to old states
+    X(i) = X(i) + delta_x; % Add pertubation
+
+    % Iterate a few times
+    for p = 1:iteration_limit
+        [ForceCoeff, MomentCoeff] = aero4560_aero(X, zeros(6,1),Xdot, U0, FlightData);
+        [Xdot] = aero4560_motion(X, ForceCoeff, MomentCoeff, FlightData);
+
+
+    end
+
+    
+    A(:,i) = (Xdot - Xdot0)/delta_x;
+    
+    
+end
+
+
+for i = 1:5
+    U = U0; % Reset to old states
+    U(i) = U(i) + delta_x; % Add pertubation
+
+    % Iterate a few times
+    for p = 1:iteration_limit
+        [ForceCoeff, MomentCoeff] = aero4560_aero(X0, zeros(6,1),Xdot, U, FlightData);
+        [Xdot] = aero4560_motion(X0, ForceCoeff, MomentCoeff, FlightData);
+
+
+    end
+
+    
+    B(:,i) = (Xdot - Xdot0)/delta_x;
+    
+    
+end
+
+
+%%% Find the reduced lateral system matrix G and H 
+G = [1 0 0 0 0 0 0 0 0 0 0 0;
+     0 0 1 0 0 0 0 0 0 0 0 0;
+     0 0 0 0 1 0 0 0 0 0 0 0;
+     0 0 0 0 0 0 0 1 0 0 0 0];
+ 
+% H is for the reduced B matrix
+H = [1 0;
+     0 1;
+     0 0;
+     0 0;
+     0 0];
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TRIM CONDITIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+V_trim  = sqrt(X0(1)^2+X0(2)^2+X0(3)^2);     % (m/s)
+alt0    = -X0(12); % (m)
+alt0ft  = alt0/0.3048;        % (ft)
+alpha_0 = X0(3)/V_trim; % (rad)
+beta_0  = 0/57.3; % (rad)
+gamma   = 0/57.3; % (rad)
+phi_0   = 0/57.3; % (rad)
+dp      = U0(1);     % (fraction of travel)
+de      = U0(2); % (rad)
+da      = 0/57.3; % (rad)
+dr      = 0/57.3; % (rad)
+df      = U0(5); % (rad)
+b = FlightData.Geo.b; % (m)
+Theta = X0(8)*57.3;
+disp(' ')
+disp(' Trimmed State and Controls')
+long_trim = ([' V = ',num2str(V_trim),' m/s, ',' Alpha = ',num2str(X0(3)/V_trim*57.3),' deg, ',' Theta = ',num2str(X0(8)*57.3),' deg. ']);
+lat_trim  = ([' Beta = ',num2str(X0(2)/V_trim*57.3),' deg. ',' Phi = ',num2str(X0(7)*57.3),' deg, ',' Psi = ',num2str(X0(9)*57.3),' deg. ']);
+Cont_trim = ([' Throttle = ',num2str(U0(1)),' (0-1) ',' Elevator = ',num2str(U0(2)*57.3),' deg, ',' Aileron = ',num2str(U0(3)*57.3),' deg, ',' Rudder = ',num2str(U0(4)*57.3),' deg. ',' Flap = ',num2str(U0(5)*57.3),' deg. ']);
+disp(' ')
+disp(long_trim)
+disp(' ')
+disp(lat_trim)
+disp(' ')
+disp(Cont_trim)
+disp(' ')
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Find the reduced system 
+A_long = G*A*G';
+B_long = G*B*H;
+
+% Get C for vertical speed
+C_vs = [0 -1 0 V_trim ];
+D_long = zeros (1, size ( B_long ,2));
+
+% Get only U and X for the Longitudinal system
+X_long = [1, 3, 5, 8]; % This needs to be transposed
+U_long = [1, 2]; % This needs to be transposed
+
+% Get the TF of vertical speed
+[Num, Denom] = ss2tf (A_long , B_long(:,2), C_vs , 0);
+G_vs_de = tf( Num, Denom);
+
+
+
+
+% Make the TF for the pitch rate
+C_q = [0 0 1 0];
+% Same as above
+[Num_q, Denom_q] = ss2tf (A_long , B_long(:,2), C_q , 0);
+G_q_de = tf( Num_q, Denom_q);
+
+% Make the closed loop K
+% K_PID = tf([12 12.012 0.012],[1 0]); % Test PID
+K_PID = tf([-0.12, -0.8, -8],[1 0]);
+K_PID_3 = tf([-0.01, -384,-384],[1,0]);
+    
+% K_PID = K_PID_3;
+sys_cl = K_PID*G_q_de/(1+K_PID*G_q_de);
+
+% asd = zpk([-0.5,-0.52],[0],-1);
+
+% sys_cl_2 = asd*G_q_de/(1+asd*G_q_de);
+
+% figure()
+% step(G_q_de,0:0.05:20)
+% figure()
+% step(sys_cl,0:0.05:20)
+% % figure()
+% % step(sys_cl_2,0:0.05:20)
+% figure()
+% bode(G_q_de*K_PID)
+% margin(K_PID*G_q_de)
+
+
+%% Q4
+
+ % G_de_u
+ [a, b] = ss2tf ( A_Lon , B_Lon (: ,2) , [1 0 0 0], 0);
+ G_de_u = tf(a, b);
+
+% G_dt_u
+ [a, b] = ss2tf ( A_Lon , B_Lon (: ,1) , [1 0 0 0], 0);
+ G_dt_u = tf(a, b);
+
+% G_dt_vs
+[a, b] = ss2tf ( A_Lon , B_Lon(: ,1) , C_vs , 0);
+ G_dt_vs = tf(a, b);
+
+% G_dt_du
+ G_dt_du = -G_dt_vs * K2 * S_vs * K_q * S_q * G_de_u ;
+
+ % Plant Transfer Function for u - loop
+ G_dtvs_u = G_dt_u + G_dt_du ;
+ K_u = 1;
+ S_u = 1 / (1 + K_u * G_dt_u );
+
+
+ % Re design Vs loop
+ G_de_dvs = -G_de_u * K_u * S_u * G_dt_vs ;
+ G_deu_vs = G_de_vs + G_de_dvs ;
+ K_vs_2 = -0.0024655; 
+ % I don't know if 
+ % New G_dtvs_u_2
+ % G_dt_du
+ G_dt_du = -G_dt_vs * K_vs_2 * S_vs * K_q * S_q * G_de_u ;
+ % Plant Transfer Function for u - loop
+ G_dtvs_u_2 = G_dt_u + G_dt_du ;
+ 
+ 
+ 
+ %% Q5 
+ 
+ % Start
+ % Set up state space sytem using ssdata
+ [Aq , Bq , Cq , Dq] = ssdata (ss( K_q ));
+ [Avs , Bvs , Cvs , Dvs ] = ssdata (ss( K_vs ));
+ [Au , Bu , Cu , Du] = ssdata (ss( K_u ));
+
+ % Question 6 Output Gust TF to SS
+ % Setting up as it will also need to be in here
+%  [Aug , Bug , Cug , Dug ] = ssdata (ss( G_zeta_ug ));
+%  [Awg , Bwg , Cwg , Dwg ] = ssdata (ss( G_zeta_wg ));
+%  [Aqg , Bqg , Cqg , Dqg ] = ssdata (ss( G_zeta_qg ));
+
+ % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+ % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SIMULATION LOOP
+
+ % Command qc and Vsc
+ % qc = deg2rad (5); % deg /s
+ Vsc = 2.54; % m/s
+
+
+ % Initialise Xvs and Xq
+ X_vs (1) = 0;
+ X_q = [0;0];
+
+ X_ug = 0;
+ X_wg = [0;0];
+ X_qg = [0;0];
+
+ for i = 2: n_pts % Start Simulation loop
+
+     % Current Time
+     T(i) = i*DT;
+
+     % Gust Input ([u,v,w,p,q,r]^T gust components )
+     Xg = [0;0;0;0;0;0];
+
+     % Question 5
+     Vs = V_trim * sin (X(5,i -1) - (X(3,i -1) / V_trim ));
+     
+     % Find error 
+     e_vs = Vsc - Vs;
+        
+     % Get commanded
+     qc = K_vs * e_vs + e_vs ; 
+     
+     % Find error
+     e_u = V_trim - X(1, i -1) ;
+     
+     % Get deflection
+     delta_T = K_u* e_u + e_u ;  
+     
+     % I think that is how you can get delta t
+     
+     % Get error
+     eq = qc - X(5, i -1);
+     
+     Xq_dot = Aq* X_q (:,i -1) + Bq*eq;
+     X_q (:,i) = X_q (:,i -1) + Xq_dot *DT;
+     
+     delta_e = Cq* X_q (:,i) + Dq*eq; % Obtain de setting
+     % I am not sure on the delta_e part but I think it is correct
+
+
+     % Question 6
+     
+     % Setting up gust stuff
+     % I think this is right 
+     % % Ug Gust
+     % ruUg = randn ();
+     % XUg_dot = Aug* X_ug (i -1) + Bug * ruUg ;
+     % X_ug (i) = X_ug (i -1) + XUg_dot *DT;
+     % UG(i) = Cug * X_ug (i) + Dug* ruUg ;
+     %
+     % % Wg Gust
+     % rwWg = randn ();
+     % XWg_dot = Awg* X_wg (:,i -1) + Bwg * rwWg ;
+     % X_wg (:,i) = X_wg (:,i -1) + XWg_dot *DT;
+     % WG(i) = Cwg * X_wg (:,i) + Dwg* rwWg ;
+
+     % % qg Gust
+     % rqqg = randn ();
+     % Xqg_dot = Aqg* X_qg (:,i -1) + Bqg * rqqg ;
+     % X_qg (:,i) = X_qg (:,i -1) + Xqg_dot *DT;
+     % qG(i) = Cqg * X_qg (:,i) + Dqg* rqqg ;
+
+
+
+     % Update U matrix
+     if T(i -1) < 1
+     U(:,i -1) = U0;
+     
+     % For deflection at 1 second
+     elseif T(i -1) >= 1
+     U(:, i -1) = U0;
+     U(2, i -1) = U(2, i -1) + delta_e ;
+     U(1, i -1) = U(1, i -1) + delta_T ;
+     end
+
+     % Non - Linear Model
+     % Integration
+    [ X_out ] = aero4560Euler (DT ,X(:,i -1) ,Xg ,U(:,i -1) ,FlightData );
+    X(:,i) = X_out ;
+    U(:,i) = U(:,i -1) ; % Save final control inputs
+    
+    % Need to add linear
+
+     % Add Gust component
+     % Setting it up, again not 100% sure if it is right
+     % X(1,i) = X(1,i -1) + UG(i); % Ug
+     % X(3,i) = X(3,i -1) + WG(i); % Wg
+     % X(5,i) = X(5,i -1) + qG(i); % qg
+     
+ end % End Simulation loop
+ 
+
+%% PLOTTING
+
+% Plot all the stuff
