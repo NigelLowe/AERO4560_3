@@ -122,18 +122,18 @@ Gamma = Akin - A;
 cd(Current_Folder); % go back inside longitudinal folder
 
 % longitudinal selection matrix
-S = [1 0 0 0 0 0 0 0 0 0 0 0;
+G = [1 0 0 0 0 0 0 0 0 0 0 0;
      0 0 1 0 0 0 0 0 0 0 0 0;
      0 0 0 0 1 0 0 0 0 0 0 0;
      0 0 0 0 0 0 0 1 0 0 0 0];
-A_Lon = S*A*S'; % u, w, q, theta
+A_long = G*A*G'; % u, w, q, theta
 
-Akin_Lon = S*Akin*S';
+Akin_Lon = G*Akin*G';
 
 % longitudinal control selection
-G = [1 0 0 0 0;
+H = [1 0 0 0 0;
      0 1 0 0 0];
-B_Lon = S*B*G'; % dT, de
+B_long = G*B*H'; % dT, de
 
 C = [1 0 0 0;
      0 1/V_trim 0 0;
@@ -142,22 +142,35 @@ C = [1 0 0 0;
 D = [0 0];  
 
 
-B_num = 2; %% 1 for throttle, 2 for elevator
+[num, den] = ss2tf(A_long, B_long, C(1,:), D, 1);
+G_dt_u = minreal(zpk(tf(num, den)));
+
+[num, den] = ss2tf(A_long, B_long, C(2,:), D, 1);
+G_dt_a = minreal(zpk(tf(num, den)));
+
+[num, den] = ss2tf(A_long, B_long, C(3,:), D, 1);
+G_dt_q = minreal(zpk(tf(num, den)));
+
+[num, den] = ss2tf(A_long, B_long, C(4,:), D, 1);
+G_dt_t = minreal(zpk(tf(num, den)));
+
+G_dt_vs = V_trim * (G_dt_t - G_dt_a);
 
 
-[num, den] = ss2tf(A_Lon, B_Lon, C(1,:), D, B_num);
-Gu = minreal(zpk(tf(num, den)));
 
-[num, den] = ss2tf(A_Lon, B_Lon, C(2,:), D, B_num);
-Ga = minreal(zpk(tf(num, den)));
+[num, den] = ss2tf(A_long, B_long, C(1,:), D, 2);
+G_de_u = minreal(zpk(tf(num, den)));
 
-[num, den] = ss2tf(A_Lon, B_Lon, C(3,:), D, B_num);
-Gq = minreal(zpk(tf(num, den)));
+[num, den] = ss2tf(A_long, B_long, C(2,:), D, 2);
+G_de_a = minreal(zpk(tf(num, den)));
 
-[num, den] = ss2tf(A_Lon, B_Lon, C(4,:), D, B_num);
-Gt = minreal(zpk(tf(num, den)));
+[num, den] = ss2tf(A_long, B_long, C(3,:), D, 2);
+G_de_q = minreal(zpk(tf(num, den)));
 
-Gvs = V_trim * (Gt - Ga);
+[num, den] = ss2tf(A_long, B_long, C(4,:), D, 2);
+G_de_t = minreal(zpk(tf(num, den)));
+
+G_de_vs = V_trim * (G_de_t - G_de_a);
 
 
 %sisotool(Gq);
@@ -234,31 +247,31 @@ disp('-------- Q3 --------');
 s = tf('s');
 
 % q controller (inner loop)
-K1 = -2*(s+0.5) / (s * (s + 0.01) ); % lead/lag - cross over 9.4 rad/s
-%K1 = -6.1541*(1+0.0064*s)*(1+0.035*s) / s; % PID
-%K1 = -1.6667*(s+0.03)/s^2; % PI with integrator
+K1_q = -2*(s+0.5) / (s * (s + 0.01) ); % lead/lag - cross over 9.4 rad/s
+%K1_q = -6.1541*(1+0.0064*s)*(1+0.035*s) / s; % PID
+%K1_q = -1.6667*(s+0.03)/s^2; % PI with integrator
 
 % vs controller (outer loop)
-%K2 = 0.015; % proportional 
-K2 = 0.03 / (s+3); % with pole - least sudden response
-%K2 = 0.027404*(s+0.1918)/s; % PI
-G1 = Gq;
-G2 = Gvs;
+%K2_vs = 0.015; % proportional 
+K2_vs = 0.03 / (s+3); % with pole - least sudden response
+%K2_vs = 0.027404*(s+0.1918)/s; % PI
+G1_vs = G_de_q;
+G2_vs = G_de_vs;
 
 % inner loop sensitivity functins (de to q)
-T1 = G1 * K1;
-S1 = 1 / (1 + T1);
-C1 = T1 / (1 + T1); 
+T1_vs = G1_vs * K1_q;
+S1_vs = 1 / (1 + T1_vs);
+C1_vs = T1_vs / (1 + T1_vs); 
 
-Gin = K1 * S1 * G2;
-Gin = minreal(zpk(Gin));
+Gin_vs = K1_q * S1_vs * G2_vs;
+Gin_vs = minreal(zpk(Gin_vs));
 
 %sisotool(Gin)
 
 % outer loop sensitivity functions (q to vs)
-T2 = Gin * K2;
-S2 = 1 / (1 + T2);
-C2 = T2 / (1 + T2);
+T2_vs = Gin_vs * K2_vs;
+S2_vs = 1 / (1 + T2_vs);
+C2_vs = T2_vs / (1 + T2_vs);
 
 
 % time response
@@ -266,7 +279,7 @@ dt = 0.01;
 t = 0:dt:10;
 
 %q_innerLead  = step(C1, t); 
-q_innerLead  = step(C1, t); 
+q_innerLead  = step(C1_vs, t); 
 q_inner_c = ones(1,length(t));
 
 
@@ -276,10 +289,10 @@ K_PI = -0.0073788*(s+285.4)/s; % cross over 9.7 rad/s
 K_PI_mod = -1.6667*(s+0.03)/s^2; % cross over 8.2 rad/s
 K_PD = -52.723;
 K_PID = -6.1541*(1+0.0064*s)*(1+0.035*s) / s; % cross over 38.5 rad/s
-q_innerPI = step(G1 * K_PI / (1 + G1 * K_PI), t);
-q_innerPI_mod = step(G1 * K_PI_mod / (1 + G1 * K_PI_mod), t);
-q_innerPD = step(G1 * K_PD / (1 + G1 * K_PD), t);
-q_innerPID = step(G1 * K_PID / (1 + G1 * K_PID), t);
+q_innerPI = step(G1_vs * K_PI / (1 + G1_vs * K_PI), t);
+q_innerPI_mod = step(G1_vs * K_PI_mod / (1 + G1_vs * K_PI_mod), t);
+q_innerPD = step(G1_vs * K_PD / (1 + G1_vs * K_PD), t);
+q_innerPID = step(G1_vs * K_PID / (1 + G1_vs * K_PID), t);
 
 plotXmax = 5;
 plotYmin = 40;
@@ -300,10 +313,10 @@ grid minor
 % step input to vertical speed
 vsc = 2.54 * ones(1,length(t)); % 500 ft/min vertical speed step input (2.54 m/s)
 
-vs = step(C2 * 2.54, t);
-qc = step(K2 * S2 * 2.54, t); 
-q = step(C1 * K2 * S2 * 2.54, t); % q to vs_c
-de = step(K1 * S1 * K2 * S2 * 2.54, t); % de to vs_c
+vs = step(C2_vs * 2.54, t);
+qc = step(K2_vs * S2_vs * 2.54, t); 
+q = step(C1_vs * K2_vs * S2_vs * 2.54, t); % q to vs_c
+de = step(K1_q * S1_vs * K2_vs * S2_vs * 2.54, t); % de to vs_c
 
 
 figure(4);
@@ -386,22 +399,22 @@ fprintf('Max wg: %.4f\n\n', 3 * sqrt(meanSquare));
 Cg = [1 0 0 0 0 0 0 0 0 0 0 0;
       0 0 1 0 0 0 0 0 0 0 0 0;
       0 0 0 0 1 0 0 0 0 0 0 0];
-Gamma_Lon = S*Gamma*Cg'; % size 5 x 3
+Gamma_Lon = G*Gamma*Cg'; % size 5 x 3
 
 Cq  = [0 0  1 0];
 Cvs = [0 -1 0 V_trim];
 D = [0 0 0];
 
-[num, den] = ss2tf(A_Lon, Gamma_Lon, Cq, D, 1);
+[num, den] = ss2tf(A_long, Gamma_Lon, Cq, D, 1);
 q_ug = minreal(zpk(tf(num, den)));
 
-[num, den] = ss2tf(A_Lon, Gamma_Lon, Cq, D, 2);
+[num, den] = ss2tf(A_long, Gamma_Lon, Cq, D, 2);
 q_wg = minreal(zpk(tf(num, den)));
 
-[num, den] = ss2tf(A_Lon, Gamma_Lon, Cvs, D, 1);
+[num, den] = ss2tf(A_long, Gamma_Lon, Cvs, D, 1);
 vs_ug = minreal(zpk(tf(num, den)));
 
-[num, den] = ss2tf(A_Lon, Gamma_Lon, Cvs, D, 2);
+[num, den] = ss2tf(A_long, Gamma_Lon, Cvs, D, 2);
 vs_wg = minreal(zpk(tf(num, den)));
 
 %%% Max state response
@@ -409,22 +422,22 @@ vs_wg = minreal(zpk(tf(num, den)));
 % T = Gin*K2
 % S = 1/(1+T)
 % C = T/(1+T)
-[mag, ~, ~] = bode(q_ug * S2, omega);
+[mag, ~, ~] = bode(q_ug * S2_vs, omega);
 PSD_ug_q_cl = (squeeze(mag.^2))' .* PSD_ug;
 meanSquare = 1/pi *trapz(omega, PSD_ug_q_cl);
 fprintf('Closed\nMax q to ug: %.4f deg/s\n', rad2deg(3 * sqrt(meanSquare))); 
 
-[mag, ~, ~] = bode(q_wg * S2, omega);
+[mag, ~, ~] = bode(q_wg * S2_vs, omega);
 PSD_wg_q_cl = (squeeze(mag.^2))' .* PSD_wg;
 meanSquare = 1/pi *trapz(omega, PSD_wg_q_cl);
 fprintf('Max q to wg: %.4f deg/s\n', rad2deg(3 * sqrt(meanSquare))); 
 
-[mag, ~, ~] = bode(vs_ug * S2, omega);
+[mag, ~, ~] = bode(vs_ug * S2_vs, omega);
 PSD_ug_vs_cl = (squeeze(mag.^2))' .* PSD_ug;
 meanSquare = 1/pi *trapz(omega, PSD_ug_vs_cl);
 fprintf('Max vs to ug: %.4f m/s\n', 3 * sqrt(meanSquare)); 
 
-[mag, ~, ~] = bode(vs_wg * S2, omega);
+[mag, ~, ~] = bode(vs_wg * S2_vs, omega);
 PSD_wg_vs_cl = (squeeze(mag.^2))' .* PSD_wg;
 meanSquare = 1/pi *trapz(omega, PSD_wg_vs_cl);
 fprintf('Max vs to wg: %.4f m/s\n\n', 3 * sqrt(meanSquare)); 
@@ -494,10 +507,10 @@ legend('Closed Loop', 'Open Loop');
 
 % including each gust type - but G_gust_control dont match up between q and
 % vs
-G_de_ug = 1/Gq * q_ug * S2;
-G_de_wg = 1/Gq * q_wg * S2;
-G_de_ug1 = 1/Gvs * vs_ug * S2;
-G_de_wg1 = 1/Gvs * vs_wg * S2;
+G_de_ug = 1/G_de_q * q_ug * S2_vs;
+G_de_wg = 1/G_de_q * q_wg * S2_vs;
+G_de_ug1 = 1/G_de_vs * vs_ug * S2_vs;
+G_de_wg1 = 1/G_de_vs * vs_wg * S2_vs;
 
 %{
 ug_de = step(G_ug_de, t);
@@ -567,9 +580,55 @@ legend('with q', 'with v_s');
 
 
 %% Q4
+%{
+
+% Make the closed loop K
+% K_PID = tf([12 12.012 0.012],[1 0]); % Test PID
+K_PID = tf([-0.12, -0.8, -8],[1 0]);
+K_PID_3 = tf([-0.01, -384,-384],[1,0]);
+    
+% K_PID = K_PID_3;
+sys_cl = K_PID*G_q_de/(1+K_PID*G_q_de);
+
+% asd = zpk([-0.5,-0.52],[0],-1);
+
+% sys_cl_2 = asd*G_q_de/(1+asd*G_q_de);
+
+% figure()
+% step(G_q_de,0:0.05:20)
+% figure()
+% step(sys_cl,0:0.05:20)
+% % figure()
+% % step(sys_cl_2,0:0.05:20)
+% figure()
+% bode(G_q_de*K_PID)
+% margin(K_PID*G_q_de)
 
 
+% G_dt_du
+ G_dt_du = -G_dt_vs * K2 * S_vs * K_q * S_q * G_de_u ;
 
+% Plant Transfer Function for u - loop
+ G_dtvs_u = G_dt_u + G_dt_du ;
+ K_u = 1;
+ S_u = 1 / (1 + K_u * G_dt_u );
+
+
+ % Re design Vs loop
+ G_de_dvs = -G_de_u * K_u * S_u * G_dt_vs ;
+ G_deu_vs = G_de_vs + G_de_dvs ;
+ K_vs_2 = -0.0024655; 
+ % I don't know if 
+ % New G_dtvs_u_2
+ % G_dt_du
+ G_dt_du = -G_dt_vs * K_vs_2 * S_vs * K_q * S_q * G_de_u ;
+ % Plant Transfer Function for u - loop
+ G_dtvs_u_2 = G_dt_u + G_dt_du ;
+ 
+ 
+ 
+ %}
+K_u = 1;
 
 %% Q5
 DT = 0.05;           % Integration time interval
@@ -581,8 +640,8 @@ T = zeros(1,n_pts);
 T(1)   = DT;
 
 clear X U
-X(:,1) = S * zeros(12,1); %X0;
-U(:,1) = G * zeros(5,1); %U0;
+X(:,1) = G * zeros(12,1); %X0;
+U(:,1) = H * zeros(5,1); %U0;
 
 Y(:,1) = zeros(5,1);
 D = 0;
@@ -594,11 +653,12 @@ Cvs = [1 0 0 0;
        0 -1 0 V_trim];
    
 Dvs = [0 0];
-[Ao, Bo, Co, Do] = ssdata(ss(K2)); % outer loop
-[Ai, Bi, Ci, Di] = ssdata(ss(K1)); % inner loop
+[Ao_vs, Bo_vs, Co_vs, Do_vs] = ssdata(ss(K2_vs)); % outer loop - vertical speed
+[Ai_q, Bi_q, Ci_q, Di_q] = ssdata(ss(K1_q)); % inner loop - pitch rate
+[Au , Bu , Cu , Du] = ssdata (ss( K_u ));
 
-Xo = zeros(size(Ao,1),n_pts);
-Xi = zeros(size(Ai,1),n_pts); 
+Xo = zeros(size(Ao_vs,1),n_pts);
+Xi = zeros(size(Ai_q,1),n_pts); 
 
 vsc = 2.54 * ones(1,n_pts);
 for i = 2:n_pts % Start Simulation loop
@@ -615,13 +675,13 @@ for i = 2:n_pts % Start Simulation loop
         % vertical speed guidance loops
         % vs - outer loop
         eo = vsc(i-1) - Y(5,i-1);
-        Xo(:,i) = aero4560_euler(DT, Ao, Bo, Xo(:,i-1), eo);
-        ic = Co * Xo(:,i) + Do * eo; % [vs; qc]
+        Xo(:,i) = aero4560_euler(DT, Ao_vs, Bo_vs, Xo(:,i-1), eo);
+        ic = Co_vs * Xo(:,i) + Do_vs * eo; % [vs; qc]
 
         % q - inner loop
         ei = ic - Y(3,i-1); % Xo(:,i-1); % Xo(1,i) = q
-        Xi(:,i) = aero4560_euler(DT, Ai, Bi, Xi(:,i-1), ei);
-        de = Ci * Xi(:,i) + Di * ei;
+        Xi(:,i) = aero4560_euler(DT, Ai_q, Bi_q, Xi(:,i-1), ei);
+        de = Ci_q * Xi(:,i) + Di_q * ei;
 
 
         % auto-throttle %%% add you stuff here
@@ -634,7 +694,7 @@ for i = 2:n_pts % Start Simulation loop
          U(:,i) = [0; 0];
     end
     
-    Xdot = A_Lon * X(:,i-1) + B_Lon * U(:,i);
+    Xdot = A_long * X(:,i-1) + B_long * U(:,i);
     X(:,i) = X(:,i-1) + Xdot*DT;
    
     Y(:,i) = Cvs * X(:,i) + Dvs * U(:,i); % [u, alpha, q, theta, vs]   
