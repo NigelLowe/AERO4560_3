@@ -659,7 +659,6 @@ Dvs = [0 0];
 
 Xo = zeros(size(Ao_vs,1),n_pts);
 Xi = zeros(size(Ai_q,1),n_pts); 
-Xu = zeros(size(Au,1),n_pts); 
 
 vsc = 2.54 * ones(1,n_pts);
 for i = 2:n_pts % Start Simulation loop
@@ -687,10 +686,10 @@ for i = 2:n_pts % Start Simulation loop
 
         % auto-throttle %%% add you stuff here
         % u - air speed
-        AAA = 1;
-        eu = AAA - Y(1,i-1); % modify AAA  
+        eu = ic - Y(1,i-1); 
         Xu(:,i) = aero4560_euler(DT, Au, Bu, Xu(:,i-1), eu);
         dT = Cu * Xu(:,i) + Du * eu;
+        % dT = 
 
         U(:,i) = [0; de];
         %U(:,i) = [dT; de]; % after you add q4 loop
