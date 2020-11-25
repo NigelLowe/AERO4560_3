@@ -142,7 +142,7 @@ C = [1 0 0 0;
 D = [0 0];  
 
 
-B_num = 2; %% 1 fr throttle, 2 for elevator
+B_num = 2; %% 1 for throttle, 2 for elevator
 
 
 [num, den] = ss2tf(A_Lon, B_Lon, C(1,:), D, B_num);
@@ -227,18 +227,21 @@ converts commanded vertical speed to a pitch rate
 %}
 
 %% Q3
+close all
+
 disp('-------- Q3 --------');
 % inner loop TF
 s = tf('s');
 
 % q controller (inner loop)
-K1 = -2*(s+0.05) / (s * (s + 0.01) ); % lead/lag
+K1 = -2*(s+0.5) / (s * (s + 0.01) ); % lead/lag - cross over 9.4 rad/s
 %K1 = -6.1541*(1+0.0064*s)*(1+0.035*s) / s; % PID
 %K1 = -1.6667*(s+0.03)/s^2; % PI with integrator
 
 % vs controller (outer loop)
-K2 = 0.015; % proportional - works with lead/lag
-
+%K2 = 0.015; % proportional 
+K2 = 0.03 / (s+3); % with pole - least sudden response
+%K2 = 0.027404*(s+0.1918)/s; % PI
 G1 = Gq;
 G2 = Gvs;
 
@@ -259,34 +262,46 @@ C2 = T2 / (1 + T2);
 
 
 % time response
-dt = 0.1;
+dt = 0.01;
 t = 0:dt:10;
 
+%q_innerLead  = step(C1, t); 
 q_innerLead  = step(C1, t); 
 q_inner_c = ones(1,length(t));
 
 
-K_PI = -1.6667*(s+0.03)/s^2;
-%K_PD = 
-K_PID = -6.1541*(1+0.0064*s)*(1+0.035*s) / s;
+% other controllers for comparison
+K_P = -27; % cross over 1500 rad/s
+K_PI = -0.0073788*(s+285.4)/s; % cross over 9.7 rad/s
+K_PI_mod = -1.6667*(s+0.03)/s^2; % cross over 8.2 rad/s
+K_PD = -52.723;
+K_PID = -6.1541*(1+0.0064*s)*(1+0.035*s) / s; % cross over 38.5 rad/s
 q_innerPI = step(G1 * K_PI / (1 + G1 * K_PI), t);
-q_innerPD = step(G1 * K_PI / (1 + G1 * K_PI), t);
+q_innerPI_mod = step(G1 * K_PI_mod / (1 + G1 * K_PI_mod), t);
+q_innerPD = step(G1 * K_PD / (1 + G1 * K_PD), t);
 q_innerPID = step(G1 * K_PID / (1 + G1 * K_PID), t);
 
+plotXmax = 5;
+plotYmin = 40;
+plotYmax = 65;
 figure(3); % response of different q controllers
-plot(t,rad2deg(q_inner_c),'--', t,rad2deg(q_innerLead), t,rad2deg(q_innerPI), t,rad2deg(q_innerPID));
+plot(t,rad2deg(q_inner_c),'--', t,rad2deg(q_innerLead), t,rad2deg(q_innerPI), t,rad2deg(q_innerPI_mod), t,rad2deg(q_innerPID)); 
+hold on
+patch([3 plotXmax plotXmax 3], [plotYmin plotYmin 0.98 * rad2deg(1) 0.98 * rad2deg(1)], [0.8 0.8 0.8])
+patch([3 plotXmax plotXmax 3], [1.02 * rad2deg(1) 1.02 * rad2deg(1) plotYmax plotYmax], [0.8 0.8 0.8])
 xlabel('Time (s)', 'interpreter','latex');
 ylabel('Pitch Rate (deg/s)', 'interpreter','latex');
-legend({'Command', 'Lead/Lag', 'PI', 'PID'}, 'interpreter','latex');
+legend({'Command', 'Lag', 'PI', 'PI Modified', 'PID'}, 'interpreter','latex');
+ylim([plotYmin plotYmax])
+xlim([0 5])
 grid minor
 
 
+% step input to vertical speed
 vsc = 2.54 * ones(1,length(t)); % 500 ft/min vertical speed step input (2.54 m/s)
 
 vs = step(C2 * 2.54, t);
 qc = step(K2 * S2 * 2.54, t); 
-%q  = step(C1, t); % q to qc - using step input (wrong)
-%de = step(K1 * S1, t); % de to qc - using step input (wrong)
 q = step(C1 * K2 * S2 * 2.54, t); % q to vs_c
 de = step(K1 * S1 * K2 * S2 * 2.54, t); % de to vs_c
 
@@ -359,10 +374,10 @@ ylabel('$\Phi_{q_g}$', 'interpreter','latex');
 
 %%% Max gust
 meanSquare = 1/pi *trapz(omega, PSD_ug);
-fprintf('Gust PSD\nMax ug: %.4f, std dev: %.4f\n', 3 * sqrt(meanSquare), sqrt(meanSquare)); 
+fprintf('Gust PSD\nMax ug: %.4f\n', 3 * sqrt(meanSquare)); 
 
 meanSquare = 1/pi *trapz(omega, PSD_wg);
-fprintf('Max wg: %.4f, std dev: %.4f\n\n', 3 * sqrt(meanSquare), sqrt(meanSquare)); 
+fprintf('Max wg: %.4f\n\n', 3 * sqrt(meanSquare)); 
 
 
 
@@ -373,71 +388,71 @@ Cg = [1 0 0 0 0 0 0 0 0 0 0 0;
       0 0 0 0 1 0 0 0 0 0 0 0];
 Gamma_Lon = S*Gamma*Cg'; % size 5 x 3
 
-Cq  = [0 0 1 0];
-Cvs = 1/V_trim * [0 1 0 1];
+Cq  = [0 0  1 0];
+Cvs = [0 -1 0 V_trim];
 D = [0 0 0];
 
-[num, den] = ss2tf(A_Lon, Gamma_Lon, Cq, D, 2);
-ug_q = minreal(zpk(tf(num, den)));
+[num, den] = ss2tf(A_Lon, Gamma_Lon, Cq, D, 1);
+q_ug = minreal(zpk(tf(num, den)));
 
 [num, den] = ss2tf(A_Lon, Gamma_Lon, Cq, D, 2);
-wg_q = minreal(zpk(tf(num, den)));
+q_wg = minreal(zpk(tf(num, den)));
+
+[num, den] = ss2tf(A_Lon, Gamma_Lon, Cvs, D, 1);
+vs_ug = minreal(zpk(tf(num, den)));
 
 [num, den] = ss2tf(A_Lon, Gamma_Lon, Cvs, D, 2);
-ug_vs = minreal(zpk(tf(num, den)));
-
-[num, den] = ss2tf(A_Lon, Gamma_Lon, Cvs, D, 2);
-wg_vs = minreal(zpk(tf(num, den)));
+vs_wg = minreal(zpk(tf(num, den)));
 
 %%% Max state response
 % closed loop
 % T = Gin*K2
 % S = 1/(1+T)
 % C = T/(1+T)
-[mag, ~, ~] = bode(ug_q * S2, omega);
+[mag, ~, ~] = bode(q_ug * S2, omega);
 PSD_ug_q_cl = (squeeze(mag.^2))' .* PSD_ug;
 meanSquare = 1/pi *trapz(omega, PSD_ug_q_cl);
-fprintf('Closed\nMax q to ug: %.4f deg/s, std dev: %.4f\n', rad2deg(3 * sqrt(meanSquare)), rad2deg(sqrt(meanSquare))); 
+fprintf('Closed\nMax q to ug: %.4f deg/s\n', rad2deg(3 * sqrt(meanSquare))); 
 
-[mag, ~, ~] = bode(wg_q * S2, omega);
+[mag, ~, ~] = bode(q_wg * S2, omega);
 PSD_wg_q_cl = (squeeze(mag.^2))' .* PSD_wg;
 meanSquare = 1/pi *trapz(omega, PSD_wg_q_cl);
-fprintf('Max q to wg: %.4f deg/s, std dev: %.4f\n', rad2deg(3 * sqrt(meanSquare)), rad2deg(sqrt(meanSquare))); 
+fprintf('Max q to wg: %.4f deg/s\n', rad2deg(3 * sqrt(meanSquare))); 
 
-[mag, ~, ~] = bode(ug_vs * S2, omega);
+[mag, ~, ~] = bode(vs_ug * S2, omega);
 PSD_ug_vs_cl = (squeeze(mag.^2))' .* PSD_ug;
 meanSquare = 1/pi *trapz(omega, PSD_ug_vs_cl);
-fprintf('Max vs to ug: %.4f m/s, std dev: %.4f\n', 3 * sqrt(meanSquare), sqrt(meanSquare)); 
+fprintf('Max vs to ug: %.4f m/s\n', 3 * sqrt(meanSquare)); 
 
-[mag, ~, ~] = bode(wg_vs * S2, omega);
+[mag, ~, ~] = bode(vs_wg * S2, omega);
 PSD_wg_vs_cl = (squeeze(mag.^2))' .* PSD_wg;
 meanSquare = 1/pi *trapz(omega, PSD_wg_vs_cl);
-fprintf('Max vs to wg: %.4f m/s, std dev: %.4f\n\n', 3 * sqrt(meanSquare), sqrt(meanSquare)); 
+fprintf('Max vs to wg: %.4f m/s\n\n', 3 * sqrt(meanSquare)); 
 
 
 
 % open loop 
 % S = 1 so no impact
 % C = Gin*K2
-[mag, ~, ~] = bode(ug_q, omega);
+[mag, ~, ~] = bode(q_ug, omega);
 PSD_ug_q_ol = (squeeze(mag.^2))' .* PSD_ug;
 meanSquare = 1/pi *trapz(omega, PSD_ug_q_ol);
-fprintf('Open\nMax q to ug: %.4f deg/s, std dev: %.4f\n', rad2deg(3 * sqrt(meanSquare)), rad2deg(sqrt(meanSquare))); 
+fprintf('Open\nMax q to ug: %.4f deg/s\n', rad2deg(3 * sqrt(meanSquare))); 
 
-[mag, ~, ~] = bode(wg_q, omega);
+[mag, ~, ~] = bode(q_wg, omega);
 PSD_wg_q_ol = (squeeze(mag.^2))' .* PSD_wg;
 meanSquare = 1/pi *trapz(omega, PSD_wg_q_ol);
-fprintf('Max q to wg: %.4f deg/s, std dev: %.4f\n', rad2deg(3 * sqrt(meanSquare)), rad2deg(sqrt(meanSquare))); 
+fprintf('Max q to wg: %.4f deg/s\n', rad2deg(3 * sqrt(meanSquare))); 
 
-[mag, ~, ~] = bode(ug_vs, omega);
+[mag, ~, ~] = bode(vs_ug, omega);
 PSD_ug_vs_ol = (squeeze(mag.^2))' .* PSD_ug;
 meanSquare = 1/pi *trapz(omega, PSD_ug_vs_ol);
-fprintf('Max vs to ug: %.4f m/s, std dev: %.4f\n', 3 * sqrt(meanSquare), sqrt(meanSquare)); 
+fprintf('Max vs to ug: %.4f m/s\n', 3 * sqrt(meanSquare)); 
 
-[mag, ~, ~] = bode(wg_vs, omega);
+[mag, ~, ~] = bode(vs_wg, omega);
 PSD_wg_vs_ol = (squeeze(mag.^2))' .* PSD_wg;
 meanSquare = 1/pi *trapz(omega, PSD_wg_vs_ol);
-fprintf('Max vs to wg: %.4f m/s, std dev: %.4f\n', 3 * sqrt(meanSquare), sqrt(meanSquare)); 
+fprintf('Max vs to wg: %.4f m/s\n\n', 3 * sqrt(meanSquare)); 
 
 
 figure(8);
@@ -477,18 +492,176 @@ legend('Closed Loop', 'Open Loop');
 
 
 
-G_ug_de = 1/Gq * 1/ug_q;
-G_wg_de = 1/Gq * 1/wg_q;
-G_ug_de1 = 1/Gvs * 1/ug_vs;
-G_wg_de1 = 1/Gvs * 1/wg_vs;
+% including each gust type - but G_gust_control dont match up between q and
+% vs
+G_de_ug = 1/Gq * q_ug * S2;
+G_de_wg = 1/Gq * q_wg * S2;
+G_de_ug1 = 1/Gvs * vs_ug * S2;
+G_de_wg1 = 1/Gvs * vs_wg * S2;
+
+%{
+ug_de = step(G_ug_de, t);
+ug_de1 = step(G_ug_de1, t);
+wg_de = step(G_wg_de, t);
+wg_de1 = step(G_wg_de1, t);
+
+figure(9)
+subplot(1,2,1)
+plot(t,ug_de,'k', t,ug_de1,'--');
+xlabel('t (s)');
+ylabel('$u_g \delta_e$', 'interpreter','latex');
+legend('q', 'vs');
+
+subplot(1,2,2)
+plot(t,wg_de,'b', t,wg_de1,'r');
+xlabel('t (s)');
+ylabel('$w_g \delta_e$', 'interpreter','latex');
+%}
+[mag, ~, ~] = bode(G_de_ug, omega);
+PSD_de_ug = (squeeze(mag.^2))' .* PSD_ug;
+meanSquare = 1/pi *trapz(omega, PSD_de_ug);
+fprintf('Max de (w/ q) to ug: %.4f deg\n', rad2deg(3 * sqrt(meanSquare))); 
+
+[mag, ~, ~] = bode(G_de_wg, omega);
+PSD_de_wg = (squeeze(mag.^2))' .* PSD_wg;
+meanSquare = 1/pi *trapz(omega, PSD_de_wg);
+fprintf('Max de (w/ q) to wg: %.4f deg\n', rad2deg(3 * sqrt(meanSquare))); 
+
+[mag, ~, ~] = bode(G_de_ug1, omega);
+PSD_de_ug1 = (squeeze(mag.^2))' .* PSD_ug;
+meanSquare = 1/pi *trapz(omega, PSD_de_ug1);
+fprintf('Max de (w/ vs) to ug: %.4f deg\n', rad2deg(3 * sqrt(meanSquare))); 
+
+[mag, ~, ~] = bode(G_de_wg1, omega);
+PSD_de_wg1 = (squeeze(mag.^2))' .* PSD_wg;
+meanSquare = 1/pi *trapz(omega, PSD_de_wg1);
+fprintf('Max de (w/ vs) to wg: %.4f deg\n', rad2deg(3 * sqrt(meanSquare))); 
 
 
+%{
+G_q_d1 = (1+G1*K1+G2*K1*K2+G1*G2*K1^2*K2) / ((1+G1*K1)*(1+G1*K1+G2*K1*K2));
+G_q_d2 = -G1*K1*K2 / (1+G1*K1+G2*K1*K2);
+G_vs_d1 = -G2*K1 / (1+G1*K1+G2*K1*K2);
+G_vs_d2 = (1+G1*K1) / (1+G1*K1+G2*K1*K2);
+%}
 
+figure(9);
+subplot(1,2,1)
+loglog(omega, PSD_de_ug);
+hold on
+loglog(omega, PSD_de_ug1,'--');
+xlabel('Frequency \omega (rad/s)');
+ylabel('$u_g$', 'interpreter','latex');
+%ylim([10^(-40) 10^2])
 
+subplot(1,2,2)
+loglog(omega, PSD_de_wg);
+hold on
+loglog(omega, PSD_de_wg1,'--');
+xlabel('Frequency \omega (rad/s)');
+ylabel('$w_g$', 'interpreter','latex');
+%ylim([10^(-40) 10^2])
+
+legend('with q', 'with v_s');
 
 
 
 %% Q4
 
 
+
+
+%% Q5
+DT = 0.05;           % Integration time interval
+T0 = DT;            % Simulation start time
+TF = 15;           % Termination time for simulation
+    
+n_pts = round((TF-T0)/DT+1);
+T = zeros(1,n_pts);
+T(1)   = DT;
+
+clear X U
+X(:,1) = S * zeros(12,1); %X0;
+U(:,1) = G * zeros(5,1); %U0;
+
+Y(:,1) = zeros(5,1);
+D = 0;
+
+Cvs = [1 0 0 0;
+       0 1 0 0;
+       0 0 1 0;
+       0 0 0 1;
+       0 -1 0 V_trim];
+   
+Dvs = [0 0];
+[Ao, Bo, Co, Do] = ssdata(ss(K2)); % outer loop
+[Ai, Bi, Ci, Di] = ssdata(ss(K1)); % inner loop
+
+Xo = zeros(size(Ao,1),n_pts);
+Xi = zeros(size(Ai,1),n_pts); 
+
+vsc = 2.54 * ones(1,n_pts);
+for i = 2:n_pts % Start Simulation loop
+
+    % Current Time
+    T(i) = i*DT;
+    
+    % Gust Input ([u,v,w,p,q,r]^T gust components)
+    Xg = [0;0;0;0;0;0];
+    
+    
+    if T(i) > 1
+        % add control loops
+        % vertical speed guidance loops
+        % vs - outer loop
+        eo = vsc(i-1) - Y(5,i-1);
+        Xo(:,i) = aero4560_euler(DT, Ao, Bo, Xo(:,i-1), eo);
+        ic = Co * Xo(:,i) + Do * eo; % [vs; qc]
+
+        % q - inner loop
+        ei = ic - Y(3,i-1); % Xo(:,i-1); % Xo(1,i) = q
+        Xi(:,i) = aero4560_euler(DT, Ai, Bi, Xi(:,i-1), ei);
+        de = Ci * Xi(:,i) + Di * ei;
+
+
+        % auto-throttle %%% add you stuff here
+        % u - air speed
+        % dT = 
+
+        U(:,i) = [0; de];
+        %U(:,i) = [dT; de]; % after you add q4 loop
+    else
+         U(:,i) = [0; 0];
+    end
+    
+    Xdot = A_Lon * X(:,i-1) + B_Lon * U(:,i);
+    X(:,i) = X(:,i-1) + Xdot*DT;
+   
+    Y(:,i) = Cvs * X(:,i) + Dvs * U(:,i); % [u, alpha, q, theta, vs]   
+    
+end     % End Simulation loop
+
+
+figure(10); % linear
+subplot(1,3,1)
+plot(T, Y(5,:), T,vsc,'--');
+ylabel('$v_s$ (m/s)', 'interpreter','latex');
+xlabel('Time (s)');
+legend({'$v_s$', '$v_{s,c}$'}, 'interpreter','latex');
+xlim([0 10]);
+grid minor
+
+subplot(1,3,2)
+plot(T, rad2deg(Y(3,:)+X0(5)));
+ylabel('$q$ (deg/s)', 'interpreter','latex');
+xlabel('Time (s)');
+xlim([0 10]);
+grid minor
+
+subplot(1,3,3)
+plot(T, rad2deg(U(2,:)+U0(2)));
+ylabel('$\delta_e$ (deg)', 'interpreter','latex');
+xlabel('Time (s)');
+xlim([0 10]);
+grid minor
 
