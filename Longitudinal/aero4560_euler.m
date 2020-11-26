@@ -1,4 +1,4 @@
-function  [X_out] = aero4560_euler1(DT, A, B, X, U)
+function  [X_out] = aero4560_euler(DT, A, B, X, U)
 
     X1_dot = A * X + B * U; 
     Am = X1_dot * DT;                   
