@@ -617,6 +617,7 @@ legend('with q', 'with v_s');
 
 
 %% Q4
+
 s = tf('s');
 C_q = [0 0 1 0];
 % Same as above
@@ -654,12 +655,9 @@ sys_cl = K_PID*G_q_de/(1+K_PID*G_q_de);
  G_dt_vs = tf(a, b);
 
 
-
 % Get the cross coupling section
 G_dt_du = G_de_u*(-K1_q*K2_vs*G_dt_vs)/(1 + K1_q*G_de_q + K1_q*K2_vs*G_de_vs);
 
-
- 
 G_u_coupled = G_dt_u + G_dt_du;
  
 
@@ -680,8 +678,7 @@ G_u_coupled = G_dt_u + G_dt_du;
 %  hold on
 %  step(CL_u_passive,0:0.01:5)
  
- 
- 
+  
  figure()
  step(CL_u_coupled,0:0.01:20)
  hold on
@@ -697,7 +694,6 @@ G_u_coupled = G_dt_u + G_dt_du;
 % Coupled part 
 % This is the throttle!!!!!!1
 G_vs_de_redone = G_de_u*G_dt_vs/(G_dt_u);
-
 
 
 % Adding to the OG 
