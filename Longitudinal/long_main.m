@@ -11,7 +11,7 @@ close all
 
 % time response
 DT = 0.01;
-t_final = 10;
+t_final = 100;
 T = 0:DT:t_final;
 n_pts = length(T);
 
@@ -790,7 +790,8 @@ Xwg = zeros(size(Awg,1),n_pts);
 vsc = 2.54 * ones(1,n_pts);
 
 
-%%% non-linear
+%%%{
+%%% NON-LINEAR SIMULATION
 X(:,1) = X0;
 U(:,1) = U0;
 Y(:,1) = Cvs * G * X0;
@@ -853,9 +854,10 @@ for i = 2:n_pts % Start Simulation loop
     
 end     % End Simulation loop
 U(:,i) = U(:,i-1);
-
+%}
 
 %{
+%%% LINEAR SIMULATION
 clear X U
 X(:,1) = G * zeros(12,1); %X0;
 U(:,1) = H * zeros(5,1); %U0;
@@ -964,7 +966,7 @@ xlabel('Time (s)');
 grid minor
 
 subplot(1,4,3)
-plot(T,U(1,:)+U0(1));
+plot(T,U(1,:));
 ylabel('$\delta_T$', 'interpreter','latex');
 xlabel('Time (s)');
 %xlim([0 10]);

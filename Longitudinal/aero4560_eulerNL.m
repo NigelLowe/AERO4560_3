@@ -9,7 +9,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function  [X_out] = aero4560_eulerNL(DT, X, Xg, U, FlightData)
-
+    % change folder to previous to get .p functions
     Current_Folder = pwd;
     TopFolder = fileparts(pwd);
     cd(TopFolder);
@@ -25,6 +25,7 @@ function  [X_out] = aero4560_eulerNL(DT, X, Xg, U, FlightData)
     % Integrate states
     X_out = X + Xdot*DT;
     
+    % move back to original folder
     cd(Current_Folder);
 end
 
