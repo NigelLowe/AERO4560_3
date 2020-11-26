@@ -580,53 +580,152 @@ legend('with q', 'with v_s');
 
 
 %% Q4
-%{
-
+%
+s = tf('s');
+C_q = [0 0 1 0];
+% Same as above
+[Num_q, Denom_q] = ss2tf (A_long , B_long(:,2), C_q , 0);
+G_q_de = tf( Num_q, Denom_q);
 % Make the closed loop K
 % K_PID = tf([12 12.012 0.012],[1 0]); % Test PID
-K_PID = tf([-0.12, -0.8, -8],[1 0]);
+K_PID = tf([-0.02, -0.13, -1.6],[1 0]);
 K_PID_3 = tf([-0.01, -384,-384],[1,0]);
     
 % K_PID = K_PID_3;
 sys_cl = K_PID*G_q_de/(1+K_PID*G_q_de);
 
-% asd = zpk([-0.5,-0.52],[0],-1);
-
-% sys_cl_2 = asd*G_q_de/(1+asd*G_q_de);
-
-% figure()
-% step(G_q_de,0:0.05:20)
-% figure()
-% step(sys_cl,0:0.05:20)
-% % figure()
-% % step(sys_cl_2,0:0.05:20)
-% figure()
-% bode(G_q_de*K_PID)
-% margin(K_PID*G_q_de)
+%  figure()
+%  step(G_q_de,0:0.05:20)
+%  figure()
+%  opt = stepDataOptions('InputOffset',0);
+%  step(sys_cl*2.54,0:0.05:20,opt)
+%  hold on
+%  plot(0:0.05:20,ones(length(0:0.05:20))*2.54)
 
 
-% G_dt_du
- G_dt_du = -G_dt_vs * K2 * S_vs * K_q * S_q * G_de_u ;
+% Get TF for u with each control
 
-% Plant Transfer Function for u - loop
- G_dtvs_u = G_dt_u + G_dt_du ;
- K_u = 1;
- S_u = 1 / (1 + K_u * G_dt_u );
+ % G_de_u
+ [a, b] = ss2tf ( A_long , B_long (: ,2) , [1 0 0 0], 0);
+ G_de_u = tf(a, b);
+
+% G_dt_u
+ [a, b] = ss2tf ( A_long , B_long (: ,1) , [1 0 0 0], 0);
+ G_dt_u = tf(a, b);
+
+% G_dt_vs
+[a, b] = ss2tf ( A_long , B_long(: ,1) , [0 -1 0 V_trim ] , 0);
+ G_dt_vs = tf(a, b);
 
 
- % Re design Vs loop
- G_de_dvs = -G_de_u * K_u * S_u * G_dt_vs ;
- G_deu_vs = G_de_vs + G_de_dvs ;
- K_vs_2 = -0.0024655; 
- % I don't know if 
- % New G_dtvs_u_2
- % G_dt_du
- G_dt_du = -G_dt_vs * K_vs_2 * S_vs * K_q * S_q * G_de_u ;
- % Plant Transfer Function for u - loop
- G_dtvs_u_2 = G_dt_u + G_dt_du ;
+
+% Get the cross coupling section
+G_dt_du = G_de_u*(-K1_q*K2_vs*G_dt_vs)/(1 + K1_q*G_de_q + K1_q*K2_vs*G_de_vs);
+
+
+ 
+G_u_coupled = G_dt_u + G_dt_du;
+ 
+
+  
+ % Compensator for G_dt_u_coupled
+ K_u = 0.0634*(1+6*s)/s;
+  
+ % Closed loop is 
+ CL_u_coupled = K_u*G_u_coupled/(1 + K_u*G_u_coupled);
+ 
+ 
+ % No vs
+ CL_u_novs = K_u*G_dt_u/(1+K_u*G_dt_u);
+ CL_u_vs = K_u*G_dt_du/(1 + K_u*G_dt_du);
+ 
+%  figure()
+%  step(CL_u_coupled,0:0.01:5)
+%  hold on
+%  step(CL_u_passive,0:0.01:5)
  
  
  
+ figure()
+ step(CL_u_coupled,0:0.01:20)
+ hold on
+ step(CL_u_vs,0:0.01:20)
+ legend('With vs active','With vs passive')
+ % That works
+ % This is the forward speed response to step input in throttle with cross coupling 
+ 
+[z,p,k] = zpkdata(G_u_coupled);
+ 
+ 
+% Need to redo the TF for vs de to include coupled
+% Coupled part 
+% This is the throttle!!!!!!1
+G_vs_de_redone = G_de_u*G_dt_vs/(G_dt_u);
+
+
+
+% Adding to the OG 
+% Fully coupled 
+G_vs_de_coupled = G_de_vs - G_vs_de_redone;
+
+% Compensator from SISOTOOL
+K_vs_coupled = -0.000247*(1+41*s)/s;
+
+% CL for new vs
+CL_vs_coupled = (K_vs_coupled*G_vs_de_coupled)/(1+(K_vs_coupled*G_vs_de_coupled));
+
+
+% Sensitivity 
+% coupled vs 
+S_vs_coupled = 1/(1+K_vs_coupled*G_vs_de_coupled);
+
+% Throttle coupled
+S_u_coupled = 1/(K_u*G_u_coupled);
+
+
+
+% Compare Closed Loop responses
+figure()
+step(CL_vs_coupled,0:0.05:20)
+hold on
+step(C2_vs,0:0.05:20)
+legend('Coupled','Non Coupled')
+
+% Compare Open Loop responses
+figure()
+step(-G_vs_de_coupled,0:0.05:30)
+hold on
+step(G_de_vs,0:0.05:30)
+hold on
+step(G_vs_de_redone,0:0.05:30)
+legend('Coupled','Non Coupled','Throttle Affect')
+
+% Gusts
+% Have the tf functions for the gusts from above
+Cu = [1,0,0,0];
+D = [0 0 0];
+
+% Others are
+% q_ug
+% q_wg
+%vs_ug
+% vs_wg
+
+[num, den] = ss2tf(A_long, Gamma_Lon, Cu, D, 1);
+u_ug = minreal(zpk(tf(num, den)));
+
+[num, den] = ss2tf(A_long, Gamma_Lon, Cu, D, 2);
+u_wg = minreal(zpk(tf(num, den)));
+
+% CL for gusts 
+CL_u_ug = u_ug*S_u_coupled;
+
+figure()
+step(CL_u_ug,0:0.05:20);
+hold on
+step(CL_u_coupled,0:0.05:20);
+
+
  %}
 K_u = 1;
 
